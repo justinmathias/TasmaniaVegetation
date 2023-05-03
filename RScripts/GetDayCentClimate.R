@@ -1,81 +1,134 @@
-#Created by Justin Mathias 3/12/23
+#Created by Justin Mathias, 5/1/2023
+#This code will create a weather file for a single site using thredds data portal using John Abatzaglou's data
 
 library('easypackages')
-libraries(c('tidyverse','HelpersMG', 'ncdf4'))
+libraries(c('tidyverse','HelpersMG', 'ncdf4', 'lubridate', 'rlist'))
 
-#Define sites across northern Tasmania
-tassites <- data.frame('SiteID' = c('TheKeepDry','TheKeepWet','HolwellDry','HolwellWet', 'MinnowCreek', 'Meander', 'MoleCreek','Hellyer','Smithton','Poilinna'),
-                       'Latitude' = c(-41.16737, -41.17169, -41.25499, -41.27372, -41.43795, -41.70001, -41.57743, -41.27375, -41.04367, -40.97341),
-                       'Longitude' = c(148.07137, 148.06780, 146.77529, 146.76602, 146.42546, 146.58134, 146.25085, 145.61582, 145.12642, 145.01781))
+#Define sites
+tassites <- data.frame('SiteID' = c('TheKeepWet','HolwellDry','HolwellWet', 'MinnowCreek', 'Meander', 'MoleCreek','Hellyer','Smithton','Poilinna'),
+                       'Lat' = c(-41.17169, -41.25499, -41.27372, -41.43795, -41.70001, -41.57743, -41.27375, -41.04367, -40.97341),
+                       'Lon' = c(148.06780, 146.77529, 146.76602, 146.42546, 146.58134, 146.25085, 145.61582, 145.12642, 145.01781))
 
-#List example URL for precip total, tmax mean, and tmin mean
-#The following is the base URL for 2020 for precip total:
-#https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/precip/total/r005/01day/agcd_v1_precip_total_r005_daily_2020.nc?var=precip&north=-41.14242&west=148.04657&east=148.09657&south=-41.19242&horizStride=1&time_start=2020-01-01T09%3A00%3A00Z&time_end=2020-12-31T09%3A00%3A00Z&timeStride=100&addLatLon=true
-#The following is the base URL for 2020 for tmax mean:
-#https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/tmax/mean/r005/01day/agcd_v1_tmax_mean_r005_daily_2020.nc?var=tmax&north=-41.14242&west=148.04657&east=148.09657&south=-41.19242&horizStride=1&time_start=2020-01-01T09%3A00%3A00Z&time_end=2020-12-31T09%3A00%3A00Z&timeStride=100&addLatLon=true
-#The following is the base URL for 2020 for tmin mean:
-#https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/tmin/mean/r005/01day/agcd_v1_tmin_mean_r005_daily_2020.nc?var=tmin&north=-41.14242&west=148.04657&east=148.09657&south=-41.19242&horizStride=1&time_start=2020-01-01T09%3A00%3A00Z&time_end=2020-12-31T09%3A00%3A00Z&timeStride=100&addLatLon=true
 
-#Define boundary points used to get NCDF files of climate data for each of our sites from thredds server--we need a rectangle as we cannot extract single points.
-latnorth <- tassites$Latitude+0.01
-latsouth <- tassites$Latitude-0.01
-lonwest <- tassites$Longitude+0.01
-loneast <- tassites$Longitude-0.01
+# tas <- data.frame('SiteID' = c('TheKeepDry'),
+#                   'Lat' = -41.16737,
+#                   'Lon' = 148.07137)
+# 
+# 
+# 
+# 
+# #Define lat/lon for downloading
+# latnorth <- tassites$Lat+0.01
+# latsouth <- tassites$Lat-0.01
+# lonwest <- tassites$Lon-0.01
+# loneast <- tassites$Lon+0.01
+# 
+# 
+# #We will give a single lat lon and have the values round to nearest 0.05 for latlow, lathigh, lonlow, lonhigh
+# StartYear <- 1910:2020
+# EndYear <- StartYear+1
 
-#Define years over which we want to extract climate data
-yrs <- 1900:1901
+#Create file links and download all files necessary for analysis----
+#We need precip (mm), tmax (C), and tmin (C) to create a weather (wth) file for DayCent.
+#We could also add srad, rh, and ws are all optional and we will not include them here.
 
-#Define URLs for precip data products (NCDF files) to download from thredds server
-precip.files <- vector("list", length(yrs)*length(latnorth)) #Create empty list to store filenames in 
-for (i in 1:length(yrs)) {
-  for (j in 1:length(tassites$SiteID)) {
-  precip.files[[i]][j] <- paste0("https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/precip/total/r005/01day/agcd_v1_precip_total_r005_daily_",yrs[i],".nc?var=precip&north=",latnorth[j],"&west=",lonwest[j],"&east=",loneast[j],"&south=",latsouth[j],"&horizStride=1&time_start=",yrs[i],"-01-01T09%3A00%3A00Z&time_end=",yrs[i],"-12-31T09%3A00%3A00Z&timeStride=100&addLatLon=true")
+# ##precip----
+# setwd("/Users/justinmathias/Library/CloudStorage/Dropbox/Research/UIdaho Postdoc/Tasmania/TasmaniaVegetation/Data/ClimateData/NC Files/precip")
+# precip_dls <- list()
+# for (i in seq_along(latnorth)) {
+#   for (j in seq_along(StartYear))
+#   precip_dls <- append(precip_dls,paste0("https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/precip/total/r005/01day/agcd_v1_precip_total_r005_daily_",StartYear[j],".nc?var=precip&north=",latnorth[i],"&west=",lonwest[i],"&east=",loneast[i],"&south=",latsouth[i],"&disableProjSubset=on&horizStride=1&time_start=",StartYear[j],"-01-01T09%3A00%3A00Z&time_end=",EndYear[j],"-12-31T09%3A00%3A00Z&timeStride=1&addLatLon=true"))
+# }
+# precip_dls <- unlist(precip_dls)
+# wget(url = c(precip_dls))
+# 
+# ##tmax----
+# setwd("/Users/justinmathias/Library/CloudStorage/Dropbox/Research/UIdaho Postdoc/Tasmania/TasmaniaVegetation/Data/ClimateData/NC Files/tmax")
+# tmax_dls <- list()
+# for (i in seq_along(latnorth)) {
+#   for (j in seq_along(StartYear))
+#     tmax_dls <- append(tmax_dls,paste0("https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/tmax/mean/r005/01day/agcd_v1_tmax_mean_r005_daily_",StartYear[j],".nc?var=tmax&north=",latnorth[i],"&west=",lonwest[i],"&east=",loneast[i],"&south=",latsouth[i],"&disableProjSubset=on&horizStride=1&time_start=",StartYear[j],"-01-01T09%3A00%3A00Z&time_end=",EndYear[j],"-12-31T09%3A00%3A00Z&timeStride=1&addLatLon=true"))
+# }
+# tmax_dls <- unlist(tmax_dls)
+# wget(url = c(tmax_dls))
+# 
+# ##tmin----
+# setwd("/Users/justinmathias/Library/CloudStorage/Dropbox/Research/UIdaho Postdoc/Tasmania/TasmaniaVegetation/Data/ClimateData/NC Files/tmin")
+# tmin_dls <- list()
+# for (i in seq_along(latnorth)) {
+#   for (j in seq_along(StartYear))
+#     tmin_dls <- append(tmin_dls,paste0("https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/tmin/mean/r005/01day/agcd_v1_tmin_mean_r005_daily_",StartYear[j],".nc?var=tmin&north=",latnorth[i],"&west=",lonwest[i],"&east=",loneast[i],"&south=",latsouth[i],"&disableProjSubset=on&horizStride=1&time_start=",StartYear[j],"-01-01T09%3A00%3A00Z&time_end=",EndYear[j],"-12-31T09%3A00%3A00Z&timeStride=1&addLatLon=true"))
+# }
+# tmin_dls <- unlist(tmin_dls)
+# wget(url = c(tmin_dls))
+
+##Read in the list of files downloaded for this analysis----
+#There should be 1,110 nc files for each variable, 111 for each of 10 sites
+#List files downloaded for analysis
+precip_fls <- list.files("/Users/justinmathias/Desktop/TassieDayCent/NC Files/precip/")
+tmax_fls <- list.files("/Users/justinmathias/Desktop/TassieDayCent/NC Files/tmax/")
+tmin_fls <- list.files("/Users/justinmathias/Desktop/TassieDayCent/NC Files/tmin/")
+
+#Create weather files----
+#Preallocate list
+precip_out <- list()
+tmax_out <- list()
+tmin_out <- list()
+
+#Loop through precipitation
+for (i in seq_along(precip_fls)) {
+  
+  #Open ncdf file and get variable, lat, lon, time
+  tmp <- nc_open(paste0("/Users/justinmathias/Desktop/TassieDayCent/NC Files/precip/",precip_fls[i]))
+  
+  lat <- ncvar_get(tmp, "lat")
+  lon <- ncvar_get(tmp, "lon")
+  time <- ncvar_get(tmp, 'time')
+  precip <- ncvar_get(tmp, "precip")
+  
+  #Create empty data frame for storing variables
+  dat <- data.frame(matrix(nrow = length(time), ncol = 6)) %>% rename("day" = "X1", "month" = "X2", "year" = "X3", "jday" = "X4", "precip" = "X5")
+  #Create empty list to store data in
+  
+  
+  #Extract day, month, year, and julian day as integers using lubridate.
+  #This assumes all files are in standard format of days since 1850-01-01
+  for (j in 1:length(time)) {
+    dat$day[j] <- day(as_date(-43829 +time[j]))
+    dat$month[j] <- month(as_date(-43829 +time[j]))
+    dat$year[j] <- year(as_date(-43829 +time[j]))
+    dat$jday[j] <- yday(as_date(-43829 +time[j]))
+    dat$precip[j] <- ifelse(length(lat) == 1 & length(lon == 2),mean(precip[,j]),
+                            ifelse(length(lat) == 2 & length(lon == 2),mean(precip[,,j]),
+                                   ifelse(length(lat) == 2 & length(lon == 1),mean(precip[,j]),"NA")))
+    
+    
   }
-}
-ppt.urls <- unlist(precip.files)
-
-#Define URLs for tmax data products (NCDF files) to download from thredds server
-tmax.files <- vector("list", length(yrs)*length(latnorth)) #Create empty list to store filenames in 
-for (i in 1:length(yrs)) {
-  for (j in 1:length(tassites$SiteID)) {
-    tmax.files[[i]][j] <- paste0("https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/tmax/mean/r005/01day/agcd_v1_tmax_mean_r005_daily_",yrs[i],".nc?var=tmax&north=",latnorth[j],"&west=",lonwest[j],"&east=",loneast[j],"&south=",latsouth[j],"&horizStride=1&time_start=",yrs[i],"-01-01T09%3A00%3A00Z&time_end=",yrs[i],"-12-31T09%3A00%3A00Z&timeStride=100&addLatLon=true")
-  }
-}
-tmax.urls <- unlist(tmax.files)
-
-#Define URLs for tmin data products (NCDF files) to download from thredds server
-tmin.files <- vector("list", length(yrs)*length(latnorth)) #Create empty list to store filenames in 
-for (i in 1:length(yrs)) {
-  for (j in 1:length(tassites$SiteID)) {
-    tmin.files[[i]][j] <- paste0("https://dapds00.nci.org.au/thredds/ncss/zv2/agcd/v1/tmin/mean/r005/01day/agcd_v1_tmin_mean_r005_daily_",yrs[i],".nc?var=tmin&north=",latnorth[j],"&west=",lonwest[j],"&east=",loneast[j],"&south=",latsouth[j],"&horizStride=1&time_start=",yrs[i],"-01-01T09%3A00%3A00Z&time_end=",yrs[i],"-12-31T09%3A00%3A00Z&timeStride=100&addLatLon=true")
-  }
-}
-tmin.urls <- unlist(tmin.files)
-
-
-
-destpath <- "/Users/justinmathias/Library/CloudStorage/Dropbox/Research/UIdaho Postdoc/Tasmania/TasmaniaVegetation/Data/ClimateData/Daily/"
-
-var <- "precip"
-for (i in 1:length(ppt.urls)) {
-  download.file(url = ppt.urls[i], destfile = paste0(destpath), method = "wget")
+  
+  precip_out <-  append(precip_out, dat)
+  
 }
 
-download.file('https://www.wikipedia.org/', destfile = "mydirectory/wikipage.html", method = "wget", extra = "-r -p --random-wait")
-
-download.file(url = ppt.urls[1], destfile = paste0(destpath, "file.nc", method = "wget"))
+precip_output <- list.rbind(precip_out)
 
 
 
 
 
 
-#I owe Livi 39.50.
+
+
+}
+
+precip_out <-  append(precip_out, dat)
+
+}
+
+precip_output <- list.rbind(precip_out)
 
 
 
 
 
-tmp <- nc_open("/Users/justinmathias/Desktop/untitled folder/agcd_v1_precip_total_r005_daily_1900.nc?var=precip&north=-41.14242&west=148.04657&east=148.09657&south=-41.19242&horizStride=1&time_start=1900-01-01T09%3A00%3A00Z&time_end=1900-12-31T09%3A00%3A00Z&timeStride=100&addLatLon=true")
-tmp
-ncvar_get(tmp, "precip")
+
+
