@@ -4,6 +4,17 @@
 library('easypackages')
 libraries(c('tidyverse', 'ncdf4', 'lubridate', 'rlist','data.table','stringi', 'HelpersMG','terra')) 
 
+#Define function to get XY from raster in Terra
+
+getValuesXY <- function(rast) {
+  rastXY <- data.frame(xyFromCell(rast, 1:ncell(rast))) #Determine xy coords from raster and put into data frame, but only for non-NA values
+  extractedValues <- terra::extract(rast, rastXY) #Extract values for each cell given xy coords
+  rastXY$ID <- 1:length(rastXY$x) #Add ID column for merging in subsequent step
+  rastValues <- list(rastXY, extractedValues) %>% reduce(left_join, by = "ID") %>% dplyr::select(-ID) #Join dataframes
+  return(rastValues)
+}
+
+
 #Define sites
 tassites <- data.frame('SiteID' = c('TheKeepDry', 'TheKeepWet','HolwellDry','HolwellWet', 'MinnowCreek', 'Meander', 'MoleCreek','Hellyer','Smithton','Poilinna'),
                        'Lat' = c(-41.16737, -41.17169, -41.25499, -41.27372, -41.43795, -41.70001, -41.57743, -41.27375, -41.04367, -40.97341),
@@ -84,11 +95,8 @@ for (i in seq_along(precip_fls)) {
   
   #Crop precip raster to tassie
   precip_crop <- terra::crop(precip, ext(144, 149, -44, -40.3))
-  #Mask precip raster to tassie
-  # precip_cropmask <- mask(precip_crop, tassie)
   
   for (j in seq_along(1:12)) {
-    # precip_stack <- append(precip_stack, precip_cropmask[[j]])
     precip_stack <- append(precip_stack, precip_crop[[j]])
     
   }
@@ -113,11 +121,9 @@ for (i in seq_along(tmax_fls)) {
   
   #Crop tmax raster to tassie
   tmax_crop <- terra::crop(tmax, ext(144, 149, -44, -40.3))
-  #Mask tmax raster to tassie
-  tmax_cropmask <- mask(tmax_crop, tassie)
   
   for (j in seq_along(1:12)) {
-    tmax_stack <- append(tmax_stack, tmax_cropmask[[j]])
+    tmax_stack <- append(tmax_stack, tmax_crop[[j]])
   }
   
 }
@@ -140,11 +146,9 @@ for (i in seq_along(tmin_fls)) {
   
   #Crop tmin raster to tassie
   tmin_crop <- terra::crop(tmin, ext(144, 149, -44, -40.3))
-  #Mask tmin raster to tassie
-  tmin_cropmask <- mask(tmin_crop, tassie)
   
   for (j in seq_along(1:12)) {
-    tmin_stack <- append(tmin_stack, tmin_cropmask[[j]])
+    tmin_stack <- append(tmin_stack, tmin_crop[[j]])
   }
   
 }
@@ -226,23 +230,30 @@ app_lm <- function(ras, return = "slope") {
   out
 }
 
+tmax_grw_out
 
-app_lm()
+precip_slope <- app_lm(precip_grw_out, "slope")
+precip_p <- app_lm(precip_grw_out, "p")
 
+tmax_slope <- app_lm(tmax_grw_out, "slope")
+tmax_p <- app_lm(tmax_grw_out, "p")
 
-
-time <- 1:nlyr(precip_grw_out)
-slopefun <- function(x) { lm(x ~ time)$coefficients[2] }
-pfun <- function(x) { summary(lm(x ~ time))$coefficients[2,4]}
-precip_slope <- app(precip_grw_out, slopefun)
-precip_p <- app(precip_grw_out, pfun)
-
-plot(precip_p)
-clamp
-slickrick <- ifel(precip_p < 0.05, precip_slope, NA)
-plot(mask(slickrick, tassie)*10)
-plot(tassie, add = T)
+tmin_slope <- app_lm(tmin_grw_out, "slope")
+tmin_p <- app_lm(tmin_grw_out, "p")
 
 
+precip_sig <- ifel(precip_p <= 0.05, precip_slope, NA)
+tmax_sig <- ifel(tmax_p <= 0.05, tmax_slope, NA)
+tmin_sig <- ifel(tmin_p <= 0.05, tmin_slope, NA)
+
+plot(mask(precip_sig*100, tassie))
+plot(mask(tmax_sig*100, tassie))
+plot(mask(tmin_sig*100, tassie))
+
+as.matrix(tmax_sig, wide = TRUE)
+values(tmax_sig)
 
 
+
+
+getValuesXY(tmax_sig)
